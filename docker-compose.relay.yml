@@ -1,0 +1,12 @@
+services:
+  tv-relay:
+    build: .
+    command:
+      - smartthings-mqtt-relay
+      - --tv-host=192.168.2.116
+      - --listen-host=0.0.0.0
+      - --listen-port=8002
+      - --listen-port-alt=8001
+      - --wol-port=8080
+    network_mode: host
+    restart: unless-stopped

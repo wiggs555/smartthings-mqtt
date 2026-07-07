@@ -1,0 +1,13 @@
+devices:
+  "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx":
+    ip_address: "192.168.2.116"
+    mac_address: "AA:BB:CC:DD:EE:FF"
+    port: 8002
+    name: "Living Room TV"
+    # Cross-VLAN relay on TV subnet:
+    # local_proxy:
+    #   host: "192.168.2.254"
+    #   port: 8002
+    #   wol_url: "http://192.168.2.254:8080/wol"
+    # force_local: false
+    # wol_broadcast: null

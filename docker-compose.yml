@@ -1,0 +1,21 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  smartthings-mqtt:
+    build: .
+    env_file: .env
+    volumes:
+      - ./config:/app/config:ro
+      - smartthings-tokens:/home/appuser/.smartthings-mqtt/tokens
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
+volumes:
+  smartthings-tokens:

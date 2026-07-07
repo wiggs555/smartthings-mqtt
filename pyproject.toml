@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smartthings-mqtt"
+version = "0.1.0"
+description = "Daemon exposing Samsung SmartThings TVs via MQTT with Home Assistant discovery"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "Andrew" }]
+dependencies = [
+    "pysmartthings>=4.0",
+    "aiomqtt>=2.0",
+    "pydantic-settings>=2.0",
+    "samsungtvws[async]>=3.0",
+    "wakeonlan>=3.0",
+    "pyyaml>=6.0",
+    "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+smartthings-mqtt = "smartthings_mqtt.__main__:main"
+smartthings-mqtt-relay = "smartthings_mqtt.local.relay:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
