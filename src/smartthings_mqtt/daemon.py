@@ -128,6 +128,8 @@ class Daemon:
                 self._settings.mqtt_port,
                 self._settings.mqtt_username,
                 self._settings.mqtt_password,
+                timeout=float(self._settings.mqtt_connect_timeout_seconds),
+                connect_retry_seconds=float(self._settings.mqtt_connect_retry_seconds),
             ) as mqtt:
                 self._mqtt = mqtt
                 await self._discover_and_register()
@@ -174,5 +176,11 @@ async def run_daemon(settings: Settings) -> None:
     except asyncio.CancelledError:
         _LOGGER.info("Daemon stopped")
     except aiomqtt.MqttError as exc:
-        _LOGGER.error("MQTT error: %s", exc)
+        _LOGGER.error(
+            "MQTT error: %s — verify MQTT_HOST=%s MQTT_PORT=%s and that your broker "
+            "is running (use the Home Assistant broker IP if not on localhost)",
+            exc,
+            settings.mqtt_host,
+            settings.mqtt_port,
+        )
         raise
