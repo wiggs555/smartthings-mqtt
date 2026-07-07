@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     local_connect_timeout_seconds: int = Field(
         default=10, alias="LOCAL_CONNECT_TIMEOUT_SECONDS"
     )
+    mqtt_connect_timeout_seconds: int = Field(
+        default=30, alias="MQTT_CONNECT_TIMEOUT_SECONDS"
+    )
+    mqtt_connect_retry_seconds: int = Field(
+        default=5, alias="MQTT_CONNECT_RETRY_SECONDS"
+    )
 
 
 def load_device_overlays(path: Path) -> dict[str, DeviceOverlay]:

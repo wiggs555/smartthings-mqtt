@@ -40,12 +40,62 @@ python -m smartthings_mqtt
 | Variable | Description |
 |---|---|
 | `SMARTTHINGS_TOKEN` | SmartThings PAT (required) |
-| `MQTT_HOST` | MQTT broker hostname |
+| `MQTT_HOST` | MQTT broker hostname (not a URL — use IP/hostname only) |
 | `MQTT_PORT` | Default `1883` |
+| `MQTT_CONNECT_TIMEOUT_SECONDS` | Broker connect timeout (default 30) |
+| `MQTT_CONNECT_RETRY_SECONDS` | Retry interval when broker is unreachable (default 5) |
 | `DEVICES_CONFIG` | Path to devices overlay YAML |
 | `POLL_INTERVAL_SECONDS` | Status poll interval (default 15) |
 
 See [`.env.example`](.env.example) for all options.
+
+### Home Assistant Mosquitto broker
+
+Home Assistant's Mosquitto add-on **requires a username and password** — anonymous connections are rejected.
+
+1. **Create MQTT credentials** (choose one):
+   - **Settings → People → Users** — create a dedicated user (e.g. `smartthings_mqtt`)
+   - **Settings → Add-ons → Mosquitto broker → Configuration** — add under `logins`:
+     ```yaml
+     logins:
+       - username: smartthings_mqtt
+         password: your-secure-password
+     ```
+2. Add to `.env`:
+   ```bash
+   MQTT_HOST=10.0.1.9
+   MQTT_PORT=1883
+   MQTT_USERNAME=smartthings_mqtt
+   MQTT_PASSWORD=your-secure-password
+   ```
+3. Do **not** use the reserved usernames `homeassistant` or `addons`.
+
+Test from the same machine running the daemon:
+
+```bash
+mosquitto_pub -h 10.0.1.9 -p 1883 -u smartthings_mqtt -P 'your-secure-password' -t test -m hello
+```
+
+### MQTT connection troubleshooting
+
+The daemon must reach your MQTT broker over TCP before it starts. A `timed out` error usually means the broker is not reachable at `MQTT_HOST:MQTT_PORT`.
+
+| How you run the daemon | Set `MQTT_HOST` to |
+|---|---|
+| On the same host as Mosquitto | `localhost` or `127.0.0.1` |
+| In Docker Compose (this repo) | `mosquitto` (the service name) |
+| On another machine, broker on Home Assistant | Your HA IP (e.g. `192.168.1.10`) |
+| Home Assistant add-on broker | HA IP; enable MQTT in HA and check port `1883` |
+
+Verify connectivity before starting:
+
+```bash
+nc -zv "$MQTT_HOST" 1883
+# or
+mosquitto_pub -h "$MQTT_HOST" -p 1883 -t test -m hello
+```
+
+The daemon now retries the connection every 5 seconds instead of exiting immediately when the broker is down.
 
 ### Per-TV overlay (`config/devices.yaml`)
 
