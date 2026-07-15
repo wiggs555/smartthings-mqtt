@@ -28,6 +28,8 @@ class DeviceOverlay(BaseModel):
     local_proxy: LocalProxyConfig | None = None
     force_local: bool = False
     wol_broadcast: str | None = None
+    # Override global OFF_ACTION for this TV ("art_mode" or "power_off").
+    off_action: str | None = None
 
 
 class Settings(BaseSettings):
@@ -73,6 +75,8 @@ class Settings(BaseSettings):
     mqtt_connect_retry_seconds: int = Field(
         default=5, alias="MQTT_CONNECT_RETRY_SECONDS"
     )
+    # "art_mode" = OFF enters The Frame / Art Mode; "power_off" = full power off.
+    off_action: str = Field(default="art_mode", alias="OFF_ACTION")
 
 
 def load_device_overlays(path: Path) -> dict[str, DeviceOverlay]:

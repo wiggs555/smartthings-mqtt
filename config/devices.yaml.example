@@ -4,6 +4,8 @@ devices:
     mac_address: "AA:BB:CC:DD:EE:FF"
     port: 8002
     name: "Living Room TV"
+    # Off button enters Art Mode (default). Use power_off for full shutdown:
+    # off_action: art_mode
     # Cross-VLAN relay on TV subnet:
     # local_proxy:
     #   host: "192.168.2.254"

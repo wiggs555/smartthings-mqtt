@@ -46,6 +46,7 @@ python -m smartthings_mqtt
 | `MQTT_CONNECT_RETRY_SECONDS` | Retry interval when broker is unreachable (default 5) |
 | `DEVICES_CONFIG` | Path to devices overlay YAML |
 | `POLL_INTERVAL_SECONDS` | Status poll interval (default 15) |
+| `OFF_ACTION` | What the Power OFF command does: `art_mode` (default, The Frame Art Mode) or `power_off` |
 
 See [`.env.example`](.env.example) for all options.
 
@@ -145,7 +146,7 @@ Per TV (`smartthings/tv/{device_id}/`):
 | Topic | Description |
 |---|---|
 | `power/state` | `ON` / `OFF` |
-| `power/set` | Power command (`ON` / `OFF`) |
+| `power/set` | Power command (`ON` = TV on, `OFF` = Art/Frame Mode by default) |
 | `volume/state` | Volume `0`–`100` |
 | `volume/set` | Volume command |
 | `mute/state` | `ON` / `OFF` |
