@@ -53,6 +53,7 @@ class TvBridge:
     local: LocalTvClient | None = None
     last_state: TvState | None = None
     transport_mode: TransportMode = TransportMode.CLOUD
+    _art_mode_as_off: bool = False
 
     @property
     def device_id(self) -> str:
@@ -63,6 +64,12 @@ class TvBridge:
         if self.overlay and self.overlay.name:
             return self.overlay.name
         return self.device.label or self.device.name
+
+    @property
+    def off_action(self) -> str:
+        if self.overlay and self.overlay.off_action:
+            return self.overlay.off_action
+        return self.settings.off_action
 
     def setup_local(self, networks: list | None = None) -> None:
         if not self.settings.local_enabled or self.overlay is None:
@@ -116,6 +123,9 @@ class TvBridge:
                 state.channel_name = cloud.channel_name
             except Exception:
                 pass
+        if self._art_mode_as_off and self.off_action == "art_mode":
+            # SmartThings often still reports switch=on while in Art Mode.
+            state.power = "off"
         self.last_state = state
         return state
 
@@ -135,12 +145,23 @@ class TvBridge:
         return False
 
     async def turn_off(self) -> None:
+        if self.off_action == "art_mode":
+            if await self._try_local("enter_art_mode", "enter_art_mode"):
+                self._art_mode_as_off = True
+                return
+            self.transport_mode = TransportMode.CLOUD
+            await self.cloud.enter_art_mode()
+            self._art_mode_as_off = True
+            return
         if await self._try_local("turn_off", "turn_off"):
+            self._art_mode_as_off = False
             return
         self.transport_mode = TransportMode.CLOUD
         await self.cloud.turn_off()
+        self._art_mode_as_off = False
 
     async def turn_on(self) -> None:
+        self._art_mode_as_off = False
         overlay = self.overlay
         if overlay and overlay.mac_address:
             wol_url = None

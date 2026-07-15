@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 from samsungtvws.async_remote import SamsungTVWSAsyncRemote
 from samsungtvws.remote import RemoteControlCommand
 
-from smartthings_mqtt.local.pairing import load_token, token_path
+from smartthings_mqtt.local.pairing import token_path
 from smartthings_mqtt.smartthings.tv_device import TvState
 
 _LOGGER = logging.getLogger(__name__)
@@ -115,6 +116,42 @@ class LocalTvClient:
         await self._send_key("KEY_POWER")
 
     async def turn_off(self) -> None:
+        await self._send_key("KEY_POWER")
+
+    async def enter_art_mode(self) -> None:
+        """Enter Frame Art Mode via the art websocket, falling back to POWER key."""
+        import asyncio
+
+        from samsungtvws import SamsungTVWS
+
+        token_file = str(token_path(self._token_dir, self._device_id))
+
+        def _set_artmode() -> None:
+            tv = SamsungTVWS(
+                host=self._endpoint.host,
+                port=self._endpoint.port,
+                token_file=token_file,
+                timeout=self._timeout,
+                name="SmartThingsMQTT",
+            )
+            art = tv.art()
+            try:
+                art.set_artmode("on")
+            finally:
+                with contextlib.suppress(Exception):
+                    tv.close()
+
+        try:
+            await asyncio.to_thread(_set_artmode)
+            _LOGGER.debug("Local art mode on for %s", self._device_id)
+            return
+        except Exception as exc:
+            _LOGGER.debug(
+                "Local art API failed for %s (%s); trying KEY_POWER",
+                self._device_id,
+                exc,
+            )
+        # On The Frame, POWER typically returns to Art Mode when configured that way.
         await self._send_key("KEY_POWER")
 
     async def volume_up(self) -> None:

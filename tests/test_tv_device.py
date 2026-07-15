@@ -1,8 +1,11 @@
 """Tests for cloud status parsing."""
 
-from pysmartthings import Attribute, Capability, Status
+from unittest.mock import AsyncMock, MagicMock
 
-from smartthings_mqtt.smartthings.tv_device import parse_cloud_status
+import pytest
+from pysmartthings import Attribute, Capability, Command, Component, Device, DeviceType, Status
+
+from smartthings_mqtt.smartthings.tv_device import CloudTvController, parse_cloud_status
 
 
 def _status(value):
@@ -44,3 +47,45 @@ def test_tv_state_mqtt_dict():
     assert d["volume_level"] == 0.5
     assert d["is_volume_muted"] is False
     assert d["source"] == "HDMI1"
+
+
+def _device_with_caps(*caps: str) -> Device:
+    component = Component(
+        id="main",
+        capabilities=list(caps),
+        manufacturer_category="Television",
+        label=None,
+        user_category=None,
+    )
+    return Device(
+        device_id="frame-1",
+        name="Frame",
+        label="Living Frame",
+        location_id="loc-1",
+        type=DeviceType.OCF,
+        components={"main": component},
+    )
+
+
+@pytest.mark.asyncio
+async def test_enter_art_mode_uses_set_art_on():
+    api = MagicMock()
+    api.execute_device_command = AsyncMock()
+    device = _device_with_caps("switch", "samsungvd.art")
+    controller = CloudTvController(api, device)
+    await controller.enter_art_mode()
+    api.execute_device_command.assert_awaited_once_with(
+        "frame-1", Capability.SAMSUNG_VD_ART, Command.SET_ART_ON, argument=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_enter_art_mode_falls_back_to_ambient():
+    api = MagicMock()
+    api.execute_device_command = AsyncMock()
+    device = _device_with_caps("switch", "samsungvd.ambient")
+    controller = CloudTvController(api, device)
+    await controller.enter_art_mode()
+    api.execute_device_command.assert_awaited_once_with(
+        "frame-1", Capability.SAMSUNG_VD_AMBIENT, Command.SET_AMBIENT_ON, argument=None
+    )

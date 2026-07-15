@@ -81,6 +81,7 @@ def build_discovery_payloads(
                 "payload_off": "OFF",
                 "state_on": "ON",
                 "state_off": "OFF",
+                "icon": "mdi:television",
                 "device": device,
                 **availability,
             },

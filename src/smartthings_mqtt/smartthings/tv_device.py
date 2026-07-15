@@ -193,6 +193,23 @@ class CloudTvController:
     async def turn_off(self) -> None:
         await self._command(Capability.SWITCH, Command.OFF)
 
+    async def enter_art_mode(self) -> None:
+        """Enter Frame Art Mode (or Ambient) instead of full power-off."""
+        if self.has_capability(Capability.SAMSUNG_VD_ART):
+            await self._command(Capability.SAMSUNG_VD_ART, Command.SET_ART_ON)
+            return
+        if self.has_capability(Capability.SAMSUNG_VD_AMBIENT):
+            await self._command(Capability.SAMSUNG_VD_AMBIENT, Command.SET_AMBIENT_ON)
+            return
+        if self.has_capability(Capability.SAMSUNG_VD_AMBIENT18):
+            await self._command(Capability.SAMSUNG_VD_AMBIENT18, Command.SET_AMBIENT_ON)
+            return
+        _LOGGER.warning(
+            "%s has no art/ambient capability — falling back to switch.off",
+            self._device.label,
+        )
+        await self.turn_off()
+
     async def turn_on(self) -> None:
         await self._command(Capability.SWITCH, Command.ON)
 
