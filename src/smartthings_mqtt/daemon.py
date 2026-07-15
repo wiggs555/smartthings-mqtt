@@ -117,7 +117,12 @@ class Daemon:
             if bridge is None:
                 _LOGGER.debug("Command for unknown device %s", device_id)
                 continue
-            await bridge.handle_command_message(entity, message.payload)
+            try:
+                await bridge.handle_command_message(entity, message.payload)
+            except Exception as exc:
+                _LOGGER.exception(
+                    "Command failed for %s/%s: %s", device_id, entity, exc
+                )
 
     async def _local_watch_loop(self) -> None:
         while not self._stop.is_set():
