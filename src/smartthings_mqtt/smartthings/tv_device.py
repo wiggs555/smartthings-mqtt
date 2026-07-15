@@ -144,14 +144,24 @@ class CloudTvController:
         caps: set[Capability] = set()
         for component in device.components.values():
             for cap in component.capabilities:
+                raw = getattr(cap, "value", None) or str(cap)
                 try:
-                    caps.add(Capability(cap) if isinstance(cap, str) else cap)
+                    caps.add(Capability(raw) if not isinstance(cap, Capability) else cap)
                 except ValueError:
                     pass
         return caps
 
     def has_capability(self, capability: Capability) -> bool:
-        return capability in self._capabilities
+        if capability in self._capabilities:
+            return True
+        # Some devices report capability ids as bare strings we couldn't enum-map.
+        needle = capability.value
+        for component in self._device.components.values():
+            for cap in component.capabilities:
+                raw = getattr(cap, "value", None) or str(cap)
+                if raw == needle:
+                    return True
+        return False
 
     async def get_status(self) -> TvState:
         components = await self._api.get_device_status(self._device.device_id)
@@ -194,21 +204,13 @@ class CloudTvController:
         await self._command(Capability.SWITCH, Command.OFF)
 
     async def enter_art_mode(self) -> None:
-        """Enter Frame Art Mode (or Ambient) instead of full power-off."""
-        if self.has_capability(Capability.SAMSUNG_VD_ART):
-            await self._command(Capability.SAMSUNG_VD_ART, Command.SET_ART_ON)
-            return
-        if self.has_capability(Capability.SAMSUNG_VD_AMBIENT):
-            await self._command(Capability.SAMSUNG_VD_AMBIENT, Command.SET_AMBIENT_ON)
-            return
-        if self.has_capability(Capability.SAMSUNG_VD_AMBIENT18):
-            await self._command(Capability.SAMSUNG_VD_AMBIENT18, Command.SET_AMBIENT_ON)
-            return
-        _LOGGER.warning(
-            "%s has no art/ambient capability — falling back to switch.off",
-            self._device.label,
-        )
-        await self.turn_off()
+        """Enter The Frame Art Mode via SmartThings (not Ambient Mode)."""
+        if not self.has_capability(Capability.SAMSUNG_VD_ART):
+            raise RuntimeError(
+                f"{self._device.label} has no samsungvd.art capability — "
+                "cannot enter Art Mode via SmartThings"
+            )
+        await self._command(Capability.SAMSUNG_VD_ART, Command.SET_ART_ON)
 
     async def turn_on(self) -> None:
         await self._command(Capability.SWITCH, Command.ON)

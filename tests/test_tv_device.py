@@ -80,12 +80,11 @@ async def test_enter_art_mode_uses_set_art_on():
 
 
 @pytest.mark.asyncio
-async def test_enter_art_mode_falls_back_to_ambient():
+async def test_enter_art_mode_rejects_ambient_only_tvs():
     api = MagicMock()
     api.execute_device_command = AsyncMock()
     device = _device_with_caps("switch", "samsungvd.ambient")
     controller = CloudTvController(api, device)
-    await controller.enter_art_mode()
-    api.execute_device_command.assert_awaited_once_with(
-        "frame-1", Capability.SAMSUNG_VD_AMBIENT, Command.SET_AMBIENT_ON, argument=None
-    )
+    with pytest.raises(RuntimeError, match="samsungvd.art"):
+        await controller.enter_art_mode()
+    api.execute_device_command.assert_not_called()
