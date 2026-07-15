@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -107,23 +106,43 @@ class TvMqttBridge:
         value = payload.decode("utf-8").strip()
         if not value:
             return
-        if entity == "power":
-            if value.upper() == "ON":
-                await self._bridge.turn_on()
-            elif value.upper() == "OFF":
-                await self._bridge.turn_off()
-        elif entity == "volume":
-            try:
-                await self._bridge.set_volume(max(0, min(100, int(float(value)))))
-            except ValueError:
-                _LOGGER.warning("Invalid volume command: %s", value)
+        try:
+            if entity == "power":
+                if value.upper() == "ON":
+                    await self._bridge.turn_on()
+                elif value.upper() == "OFF":
+                    await self._bridge.turn_off()
+            elif entity == "volume":
+                try:
+                    await self._bridge.set_volume(
+                        max(0, min(100, int(float(value))))
+                    )
+                except ValueError:
+                    _LOGGER.warning("Invalid volume command: %s", value)
+                    return
+            elif entity == "mute":
+                await self._bridge.set_mute(value.upper() == "ON")
+            elif entity == "source":
+                await self._bridge.select_source(value)
+            else:
+                _LOGGER.debug("Unknown entity command %s", entity)
                 return
-        elif entity == "mute":
-            await self._bridge.set_mute(value.upper() == "ON")
-        elif entity == "source":
-            await self._bridge.select_source(value)
-        else:
-            _LOGGER.debug("Unknown entity command %s", entity)
+        except Exception as exc:
+            _LOGGER.warning(
+                "Command %s=%s failed for %s: %s",
+                entity,
+                value,
+                self._bridge.display_name,
+                exc,
+            )
             return
-        state = await self._bridge.refresh_state()
-        await self.publish_state(state)
+        try:
+            state = await self._bridge.refresh_state()
+            await self.publish_state(state)
+        except Exception as exc:
+            _LOGGER.warning(
+                "Failed to refresh state after %s command for %s: %s",
+                entity,
+                self._bridge.display_name,
+                exc,
+            )

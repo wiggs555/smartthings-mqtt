@@ -175,9 +175,20 @@ class CloudTvController:
                 self._device.label,
             )
             return
-        await self._api.execute_device_command(
-            self._device.device_id, capability, command, argument=argument
-        )
+        try:
+            await self._api.execute_device_command(
+                self._device.device_id, capability, command, argument=argument
+            )
+        except Exception as exc:
+            _LOGGER.warning(
+                "SmartThings command %s.%s failed for %s (%s): %s",
+                capability,
+                command,
+                self._device.label,
+                self._device.device_id,
+                exc,
+            )
+            raise
 
     async def turn_off(self) -> None:
         await self._command(Capability.SWITCH, Command.OFF)
