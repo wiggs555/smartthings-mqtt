@@ -119,7 +119,7 @@ class LocalTvClient:
         await self._send_key("KEY_POWER")
 
     async def enter_art_mode(self) -> None:
-        """Enter Frame Art Mode via the art websocket, falling back to POWER key."""
+        """Enter Frame Art Mode via the art websocket only (never KEY_POWER/Ambient)."""
         import asyncio
 
         from samsungtvws import SamsungTVWS
@@ -136,23 +136,17 @@ class LocalTvClient:
             )
             art = tv.art()
             try:
+                if not art.supported():
+                    raise RuntimeError(
+                        f"FrameTVSupport is false for {self._endpoint.host}"
+                    )
                 art.set_artmode("on")
             finally:
                 with contextlib.suppress(Exception):
                     tv.close()
 
-        try:
-            await asyncio.to_thread(_set_artmode)
-            _LOGGER.debug("Local art mode on for %s", self._device_id)
-            return
-        except Exception as exc:
-            _LOGGER.debug(
-                "Local art API failed for %s (%s); trying KEY_POWER",
-                self._device_id,
-                exc,
-            )
-        # On The Frame, POWER typically returns to Art Mode when configured that way.
-        await self._send_key("KEY_POWER")
+        await asyncio.to_thread(_set_artmode)
+        _LOGGER.info("Local Art Mode enabled for %s", self._device_id)
 
     async def volume_up(self) -> None:
         await self._send_key("KEY_VOLUP")

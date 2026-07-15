@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from pysmartthings import Device, SmartThings
+from pysmartthings import Capability, Device, SmartThings
 
 from smartthings_mqtt.config import DeviceOverlay, Settings
 from smartthings_mqtt.local.client import LocalEndpoint, LocalTvClient
@@ -146,13 +146,33 @@ class TvBridge:
 
     async def turn_off(self) -> None:
         if self.off_action == "art_mode":
+            # Prefer SmartThings setArtOn. Do not use Ambient or KEY_POWER —
+            # those land in Ambient Mode on many Samsung TVs.
+            cloud_error: Exception | None = None
+            if self.cloud.has_capability(Capability.SAMSUNG_VD_ART):
+                try:
+                    self.transport_mode = TransportMode.CLOUD
+                    await self.cloud.enter_art_mode()
+                    self._art_mode_as_off = True
+                    _LOGGER.info("Art Mode via SmartThings for %s", self.display_name)
+                    return
+                except Exception as exc:
+                    cloud_error = exc
+                    _LOGGER.warning(
+                        "SmartThings Art Mode failed for %s: %s",
+                        self.display_name,
+                        exc,
+                    )
             if await self._try_local("enter_art_mode", "enter_art_mode"):
                 self._art_mode_as_off = True
+                _LOGGER.info("Art Mode via local art API for %s", self.display_name)
                 return
-            self.transport_mode = TransportMode.CLOUD
-            await self.cloud.enter_art_mode()
-            self._art_mode_as_off = True
-            return
+            if cloud_error is not None:
+                raise cloud_error
+            raise RuntimeError(
+                f"Could not enter Art Mode for {self.display_name}: "
+                "no samsungvd.art capability and local art API unavailable"
+            )
         if await self._try_local("turn_off", "turn_off"):
             self._art_mode_as_off = False
             return
