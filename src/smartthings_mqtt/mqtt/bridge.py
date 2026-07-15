@@ -6,7 +6,11 @@ import json
 import logging
 from typing import Any
 
-from smartthings_mqtt.mqtt.homeassistant import build_discovery_payload, device_topics
+from smartthings_mqtt.mqtt.homeassistant import (
+    build_discovery_payloads,
+    device_topics,
+    discovery_topics,
+)
 from smartthings_mqtt.mqtt.client import MqttPublisher
 from smartthings_mqtt.smartthings.tv_device import TvState
 from smartthings_mqtt.transport import TvBridge
@@ -29,10 +33,7 @@ class TvMqttBridge:
         self._topics = device_topics(topic_prefix, bridge.device_id)
         self._discovery_prefix = discovery_prefix
         self._last_published: dict[str, Any] | None = None
-
-    @property
-    def command_topic(self) -> str:
-        return self._topics["command"]
+        self._has_source_entity = False
 
     @property
     def device_id(self) -> str:
@@ -42,7 +43,7 @@ class TvMqttBridge:
         model = None
         if self._bridge.device.ocf:
             model = self._bridge.device.ocf.model_number
-        topic, payload = build_discovery_payload(
+        payloads = build_discovery_payloads(
             name=self._bridge.display_name,
             device_id=self._bridge.device_id,
             topics=self._topics,
@@ -50,14 +51,19 @@ class TvMqttBridge:
             source_list=source_list,
             model=model,
         )
-        await self._mqtt.publish_json(topic, payload, retain=True)
-        _LOGGER.info("Published HA discovery for %s", self._bridge.display_name)
+        self._has_source_entity = source_list is not None and len(source_list) > 0
+        for topic, payload in payloads:
+            await self._mqtt.publish_json(topic, payload, retain=True)
+        _LOGGER.info(
+            "Published HA discovery for %s (%d entities)",
+            self._bridge.display_name,
+            len(payloads),
+        )
 
     async def remove_discovery(self) -> None:
-        from smartthings_mqtt.mqtt.homeassistant import discovery_topic
-
-        topic = discovery_topic(self._discovery_prefix, self._bridge.device_id)
-        await self._mqtt.publish(topic, "", retain=True)
+        topics = discovery_topics(self._discovery_prefix, self._bridge.device_id)
+        for topic in topics.values():
+            await self._mqtt.publish(topic, "", retain=True)
 
     async def publish_availability(self, online: bool) -> None:
         await self._mqtt.publish(
@@ -67,7 +73,12 @@ class TvMqttBridge:
         )
 
     async def publish_state(self, state: TvState) -> None:
-        mqtt_state = state.as_mqtt_dict()
+        mqtt_state = {
+            "power": "ON" if state.power == "on" else "OFF",
+            "volume": str(state.volume),
+            "mute": "ON" if state.muted else "OFF",
+            "source": state.source,
+        }
         attrs = {
             "channel": state.channel,
             "channel_name": state.channel_name,
@@ -76,22 +87,43 @@ class TvMqttBridge:
         if mqtt_state == self._last_published and not state.source_list:
             return
         self._last_published = dict(mqtt_state)
-        await self._mqtt.publish_json(self._topics["state"], mqtt_state, retain=True)
-        await self._mqtt.publish_json(self._topics["attributes"], attrs, retain=True)
-        if state.source_list:
-            await self._mqtt.publish_json(
-                self._topics["source_list"], state.source_list, retain=True
+        await self._mqtt.publish(
+            self._topics["power_state"], mqtt_state["power"], retain=True
+        )
+        await self._mqtt.publish(
+            self._topics["volume_state"], mqtt_state["volume"], retain=True
+        )
+        await self._mqtt.publish(
+            self._topics["mute_state"], mqtt_state["mute"], retain=True
+        )
+        if state.source or self._has_source_entity:
+            await self._mqtt.publish(
+                self._topics["source_state"], mqtt_state["source"], retain=True
             )
+        await self._mqtt.publish_json(self._topics["attributes"], attrs, retain=True)
         await self.publish_availability(state.online)
 
-    async def handle_command_message(self, payload: bytes) -> None:
-        try:
-            data = json.loads(payload.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            _LOGGER.warning("Invalid command payload: %s", exc)
+    async def handle_command_message(self, entity: str, payload: bytes) -> None:
+        value = payload.decode("utf-8").strip()
+        if not value:
             return
-        if not isinstance(data, dict):
+        if entity == "power":
+            if value.upper() == "ON":
+                await self._bridge.turn_on()
+            elif value.upper() == "OFF":
+                await self._bridge.turn_off()
+        elif entity == "volume":
+            try:
+                await self._bridge.set_volume(max(0, min(100, int(float(value)))))
+            except ValueError:
+                _LOGGER.warning("Invalid volume command: %s", value)
+                return
+        elif entity == "mute":
+            await self._bridge.set_mute(value.upper() == "ON")
+        elif entity == "source":
+            await self._bridge.select_source(value)
+        else:
+            _LOGGER.debug("Unknown entity command %s", entity)
             return
-        await self._bridge.handle_command(data)
         state = await self._bridge.refresh_state()
         await self.publish_state(state)

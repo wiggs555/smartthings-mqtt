@@ -1,11 +1,11 @@
 # SmartThings TV MQTT Daemon
 
-Python daemon that auto-discovers Samsung TVs via SmartThings, exposes them as Home Assistant `media_player` entities through MQTT discovery, and supports local WebSocket control with VLAN proxy and Wake-on-LAN.
+Python daemon that auto-discovers Samsung TVs via SmartThings, exposes them in Home Assistant through native MQTT discovery (`switch`, `number`, `select` entities grouped per TV), and supports local WebSocket control with VLAN proxy and Wake-on-LAN.
 
 ## Features
 
 - Auto-discover Samsung TVs from SmartThings cloud API
-- Home Assistant MQTT discovery (`media_player`)
+- Home Assistant MQTT discovery (power, volume, mute, and source entities per TV)
 - Hybrid control: local WebSocket (fast) with SmartThings cloud fallback
 - Wake-on-LAN for power-on
 - Built-in VLAN relay proxy for cross-subnet local control
@@ -144,13 +144,35 @@ Per TV (`smartthings/tv/{device_id}/`):
 
 | Topic | Description |
 |---|---|
-| `state` | JSON state (power, volume, source) |
-| `set` | Command topic |
+| `power/state` | `ON` / `OFF` |
+| `power/set` | Power command (`ON` / `OFF`) |
+| `volume/state` | Volume `0`–`100` |
+| `volume/set` | Volume command |
+| `mute/state` | `ON` / `OFF` |
+| `mute/set` | Mute command |
+| `source/state` | Active input |
+| `source/set` | Input select command |
 | `availability` | `online` / `offline` |
-| `source_list` | JSON array of inputs |
-| `attributes` | Extra attributes (channel, transport) |
+| `attributes` | JSON extras (channel, transport) |
 
-Discovery: `homeassistant/media_player/smartthings_tv_{device_id}/config`
+Discovery (one config topic per entity):
+
+- `homeassistant/switch/smartthings_tv_{device_id}_power/config`
+- `homeassistant/number/smartthings_tv_{device_id}_volume/config`
+- `homeassistant/switch/smartthings_tv_{device_id}_mute/config`
+- `homeassistant/select/smartthings_tv_{device_id}_source/config` (when inputs are known)
+
+Home Assistant does **not** support native MQTT discovery for `media_player` entities ([core#152085](https://github.com/home-assistant/core/issues/152085)). This daemon publishes supported entity types instead.
+
+### Nothing shows up in Home Assistant?
+
+1. Confirm the daemon log shows `Discovered N TV(s)` with **N > 0** and `Registered TV:` lines.
+2. Subscribe to discovery traffic from the daemon host:
+   ```bash
+   mosquitto_sub -h 10.0.1.9 -u smartthings_mqtt -P 'your-password' -t 'homeassistant/#' -v
+   ```
+3. In HA: **Settings → Devices & services → MQTT** — discovery must be enabled (default).
+4. Restart the daemon after upgrading; old `media_player` discovery messages are ignored by HA.
 
 ## systemd
 

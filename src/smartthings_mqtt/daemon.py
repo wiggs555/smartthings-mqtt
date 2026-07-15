@@ -35,7 +35,15 @@ class Daemon:
 
     async def _discover_and_register(self) -> None:
         assert self._mqtt is not None
-        devices = filter_tv_devices(await self._st.api.get_devices())
+        all_devices = await self._st.api.get_devices()
+        devices = filter_tv_devices(all_devices)
+        if not devices:
+            _LOGGER.warning(
+                "No Samsung TVs found in SmartThings (%d total device(s)). "
+                "Confirm TVs appear in the SmartThings app and your PAT has "
+                "r:devices:* scope.",
+                len(all_devices),
+            )
         current_ids = {d.device_id for d in devices}
         known_ids = set(self._bridges.keys())
 
@@ -93,7 +101,7 @@ class Daemon:
     async def _command_loop(self) -> None:
         assert self._mqtt is not None
         prefix = self._settings.mqtt_topic_prefix
-        topic_filter = f"{prefix}/+/set"
+        topic_filter = f"{prefix}/+/+/set"
         await self._mqtt.client.subscribe(topic_filter)
         _LOGGER.info("Subscribed to commands: %s", topic_filter)
         async for message in self._mqtt.client.messages:
@@ -101,14 +109,15 @@ class Daemon:
                 break
             topic = str(message.topic)
             parts = topic.split("/")
-            if len(parts) < 2:
+            if len(parts) < 4:
                 continue
-            device_id = parts[-2]
+            device_id = parts[-3]
+            entity = parts[-2]
             bridge = self._bridges.get(device_id)
             if bridge is None:
                 _LOGGER.debug("Command for unknown device %s", device_id)
                 continue
-            await bridge.handle_command_message(message.payload)
+            await bridge.handle_command_message(entity, message.payload)
 
     async def _local_watch_loop(self) -> None:
         while not self._stop.is_set():

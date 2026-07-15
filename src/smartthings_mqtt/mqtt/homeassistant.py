@@ -4,41 +4,55 @@ from __future__ import annotations
 
 from typing import Any
 
-# homeassistant.components.media_player.MediaPlayerEntityFeature
-SUPPORT_TURN_ON = 128
-SUPPORT_TURN_OFF = 64
-SUPPORT_VOLUME_SET = 4
-SUPPORT_VOLUME_MUTE = 8
-SUPPORT_SELECT_SOURCE = 512
-SUPPORT_VOLUME_STEP = 1024
-
-DEFAULT_FEATURES = (
-    SUPPORT_TURN_ON
-    | SUPPORT_TURN_OFF
-    | SUPPORT_VOLUME_SET
-    | SUPPORT_VOLUME_MUTE
-    | SUPPORT_SELECT_SOURCE
-    | SUPPORT_VOLUME_STEP
-)
+EntityDiscovery = tuple[str, dict[str, Any]]
 
 
-def discovery_topic(discovery_prefix: str, device_id: str) -> str:
-    safe_id = device_id.replace("-", "")
-    return f"{discovery_prefix}/media_player/smartthings_tv_{safe_id}/config"
+def _safe_id(device_id: str) -> str:
+    return device_id.replace("-", "")
+
+
+def _device_block(
+    *,
+    name: str,
+    device_id: str,
+    model: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "identifiers": [f"smartthings_{device_id}"],
+        "name": name,
+        "manufacturer": "Samsung",
+        "model": model or "SmartThings TV",
+    }
 
 
 def device_topics(prefix: str, device_id: str) -> dict[str, str]:
     base = f"{prefix}/{device_id}"
     return {
         "availability": f"{base}/availability",
-        "state": f"{base}/state",
-        "command": f"{base}/set",
-        "source_list": f"{base}/source_list",
+        "power_state": f"{base}/power/state",
+        "power_command": f"{base}/power/set",
+        "volume_state": f"{base}/volume/state",
+        "volume_command": f"{base}/volume/set",
+        "mute_state": f"{base}/mute/state",
+        "mute_command": f"{base}/mute/set",
+        "source_state": f"{base}/source/state",
+        "source_command": f"{base}/source/set",
         "attributes": f"{base}/attributes",
     }
 
 
-def build_discovery_payload(
+def discovery_topics(discovery_prefix: str, device_id: str) -> dict[str, str]:
+    """Return HA discovery config topics keyed by entity kind."""
+    safe = _safe_id(device_id)
+    return {
+        "power": f"{discovery_prefix}/switch/smartthings_tv_{safe}_power/config",
+        "volume": f"{discovery_prefix}/number/smartthings_tv_{safe}_volume/config",
+        "mute": f"{discovery_prefix}/switch/smartthings_tv_{safe}_mute/config",
+        "source": f"{discovery_prefix}/select/smartthings_tv_{safe}_source/config",
+    }
+
+
+def build_discovery_payloads(
     *,
     name: str,
     device_id: str,
@@ -46,27 +60,75 @@ def build_discovery_payload(
     discovery_prefix: str,
     source_list: list[str] | None = None,
     model: str | None = None,
-) -> tuple[str, dict[str, Any]]:
-    """Return (topic, payload) for HA MQTT discovery."""
-    topic = discovery_topic(discovery_prefix, device_id)
-    payload: dict[str, Any] = {
-        "name": name,
-        "unique_id": f"smartthings_mqtt_{device_id}",
+) -> list[EntityDiscovery]:
+    """Return HA MQTT discovery messages for supported entity platforms."""
+    device = _device_block(name=name, device_id=device_id, model=model)
+    discovery = discovery_topics(discovery_prefix, device_id)
+    availability = {
         "availability_topic": topics["availability"],
         "payload_available": "online",
         "payload_not_available": "offline",
-        "state_topic": topics["state"],
-        "command_topic": topics["command"],
-        "json_attributes_topic": topics["attributes"],
-        "supported_features": DEFAULT_FEATURES,
-        "device": {
-            "identifiers": [f"smartthings_{device_id}"],
-            "name": name,
-            "manufacturer": "Samsung",
-            "model": model or "SmartThings TV",
-            "via_device": "smartthings_mqtt",
-        },
     }
+    payloads: list[EntityDiscovery] = [
+        (
+            discovery["power"],
+            {
+                "name": f"{name} Power",
+                "unique_id": f"smartthings_mqtt_{device_id}_power",
+                "state_topic": topics["power_state"],
+                "command_topic": topics["power_command"],
+                "payload_on": "ON",
+                "payload_off": "OFF",
+                "state_on": "ON",
+                "state_off": "OFF",
+                "device": device,
+                **availability,
+            },
+        ),
+        (
+            discovery["volume"],
+            {
+                "name": f"{name} Volume",
+                "unique_id": f"smartthings_mqtt_{device_id}_volume",
+                "state_topic": topics["volume_state"],
+                "command_topic": topics["volume_command"],
+                "min": 0,
+                "max": 100,
+                "step": 1,
+                "mode": "slider",
+                "device": device,
+                **availability,
+            },
+        ),
+        (
+            discovery["mute"],
+            {
+                "name": f"{name} Mute",
+                "unique_id": f"smartthings_mqtt_{device_id}_mute",
+                "state_topic": topics["mute_state"],
+                "command_topic": topics["mute_command"],
+                "payload_on": "ON",
+                "payload_off": "OFF",
+                "state_on": "ON",
+                "state_off": "OFF",
+                "device": device,
+                **availability,
+            },
+        ),
+    ]
     if source_list:
-        payload["source_list"] = source_list
-    return topic, payload
+        payloads.append(
+            (
+                discovery["source"],
+                {
+                    "name": f"{name} Source",
+                    "unique_id": f"smartthings_mqtt_{device_id}_source",
+                    "state_topic": topics["source_state"],
+                    "command_topic": topics["source_command"],
+                    "options": source_list,
+                    "device": device,
+                    **availability,
+                },
+            )
+        )
+    return payloads
