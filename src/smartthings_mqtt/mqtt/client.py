@@ -161,10 +161,17 @@ class MqttPublisher:
         await self.connect()
         return self
 
+    async def disconnect(self) -> None:
+        """Disconnect immediately (unblocks an in-flight messages iterator)."""
+        if self._client is None:
+            return
+        client = self._client
+        self._client = None
+        with contextlib.suppress(Exception):
+            await client.__aexit__(None, None, None)
+
     async def __aexit__(self, *args: object) -> None:
-        if self._client is not None:
-            await self._client.__aexit__(*args)
-            self._client = None
+        await self.disconnect()
 
     @property
     def client(self) -> aiomqtt.Client:

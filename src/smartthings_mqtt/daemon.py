@@ -104,25 +104,30 @@ class Daemon:
         topic_filter = f"{prefix}/+/+/set"
         await self._mqtt.client.subscribe(topic_filter)
         _LOGGER.info("Subscribed to commands: %s", topic_filter)
-        async for message in self._mqtt.client.messages:
-            if self._stop.is_set():
-                break
-            topic = str(message.topic)
-            parts = topic.split("/")
-            if len(parts) < 4:
-                continue
-            device_id = parts[-3]
-            entity = parts[-2]
-            bridge = self._bridges.get(device_id)
-            if bridge is None:
-                _LOGGER.debug("Command for unknown device %s", device_id)
-                continue
-            try:
-                await bridge.handle_command_message(entity, message.payload)
-            except Exception as exc:
-                _LOGGER.exception(
-                    "Command failed for %s/%s: %s", device_id, entity, exc
-                )
+        try:
+            async for message in self._mqtt.client.messages:
+                if self._stop.is_set():
+                    break
+                topic = str(message.topic)
+                parts = topic.split("/")
+                if len(parts) < 4:
+                    continue
+                device_id = parts[-3]
+                entity = parts[-2]
+                bridge = self._bridges.get(device_id)
+                if bridge is None:
+                    _LOGGER.debug("Command for unknown device %s", device_id)
+                    continue
+                try:
+                    await bridge.handle_command_message(entity, message.payload)
+                except Exception as exc:
+                    _LOGGER.exception(
+                        "Command failed for %s/%s: %s", device_id, entity, exc
+                    )
+        except aiomqtt.MqttError:
+            # Disconnect during shutdown unblocks the messages iterator.
+            if not self._stop.is_set():
+                raise
 
     async def _local_watch_loop(self) -> None:
         while not self._stop.is_set():
@@ -147,22 +152,28 @@ class Daemon:
             ) as mqtt:
                 self._mqtt = mqtt
                 await self._discover_and_register()
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(self._poll_loop(), name="poll")
-                    tg.create_task(self._rescan_loop(), name="rescan")
-                    tg.create_task(self._command_loop(), name="commands")
-                    tg.create_task(self._local_watch_loop(), name="local_watch")
-                    tg.create_task(self._wait_for_stop(), name="shutdown")
+                try:
+                    async with asyncio.TaskGroup() as tg:
+                        tg.create_task(self._poll_loop(), name="poll")
+                        tg.create_task(self._rescan_loop(), name="rescan")
+                        tg.create_task(self._command_loop(), name="commands")
+                        tg.create_task(self._local_watch_loop(), name="local_watch")
+                        # Wait here so exiting this block cancels sibling tasks.
+                        await self._stop.wait()
+                        _LOGGER.info("Shutting down…")
+                        # Unblock aiomqtt's messages iterator before cancel.
+                        await mqtt.disconnect()
+                except* asyncio.CancelledError:
+                    pass
         finally:
+            self._mqtt = None
             await self._st.stop()
             for bridge in self._bridges.values():
                 local = bridge._bridge.local  # noqa: SLF001
                 if local is not None:
-                    await local.disconnect()
-
-    async def _wait_for_stop(self) -> None:
-        await self._stop.wait()
-        raise asyncio.CancelledError("shutdown requested")
+                    with contextlib.suppress(Exception):
+                        await local.disconnect()
+            _LOGGER.info("Daemon stopped")
 
     def request_stop(self) -> None:
         self._stop.set()
